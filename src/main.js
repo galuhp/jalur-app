@@ -237,6 +237,43 @@ map.on('click', (e) => {
   computeRoute();
 });
 
+// ---- Progress bar export PDF (state pdfProgress: { percent, label }) ----
+function setPdfProgress(percent, label) {
+  const cur = getAppState().pdfProgress;
+  const prev = (cur && cur.percent) || 0;
+  appSet({
+    pdfProgress: {
+      // Persen tidak pernah mundur — creep/label lama sebagai jaring pengaman
+      percent: Math.max(prev, Math.min(100, Math.round(percent))),
+      label: label || (cur && cur.label) || 'Memproses…',
+    },
+  });
+}
+function stagePdfProgress(percent, label) {
+  stopPdfProgressCreep();
+  setPdfProgress(percent, label);
+}
+let pdfCreepTimer = null;
+// Geser bar perlahan (ease-out) menuju `target` selama `ms` — memberi progres
+// hidup selama menunggu tile/render yang tidak bisa diukur persis.
+function creepPdfProgress(target, ms) {
+  stopPdfProgressCreep();
+  const start = (getAppState().pdfProgress && getAppState().pdfProgress.percent) || 0;
+  const t0 = Date.now();
+  pdfCreepTimer = setInterval(() => {
+    const k = Math.min(1, (Date.now() - t0) / ms);
+    const eased = 1 - Math.pow(1 - k, 2);
+    setPdfProgress(start + (target - start) * eased);
+    if (k >= 1) stopPdfProgressCreep();
+  }, 120);
+}
+function stopPdfProgressCreep() {
+  if (pdfCreepTimer) {
+    clearInterval(pdfCreepTimer);
+    pdfCreepTimer = null;
+  }
+}
+
 // ---- Aksi UI: di-registrasi ke store, dipanggil komponen React/MUI ----
 registerActions({
   setMode(m) {
@@ -294,20 +331,6 @@ registerActions({
     gpxInput.click();
   },
 
-  applyGpxProfile(profile) {
-    const pts = pendingGpxPts;
-    pendingGpxPts = null;
-    appSet({ gpxDialog: null });
-    if (pts && pts.length > 0) {
-      finishGpxImport(pts, profile);
-    }
-  },
-
-  cancelGpxImport() {
-    pendingGpxPts = null;
-    appSet({ gpxDialog: null });
-  },
-
   dismissToast() {
     appSet({ toast: null });
   },
@@ -330,7 +353,7 @@ registerActions({
       const prevKey = currentBasemap;
       let switched = false;
       let routeHidden = false;
-      showToast('Menyiapkan OSM Retina…');
+      setPdfProgress(4, 'Menyiapkan basemap OSM…');
       try {
         if (prevKey !== 'osm') {
           switched = true;
@@ -340,8 +363,10 @@ registerActions({
         }
         // Selalu tunggu tile benar-benar selesai (juga saat basemap sudah
         // OSM) — kalau tidak, tangkapan bisa dapat peta yang masih kosong.
+        creepPdfProgress(15, 20000);
         await waitForMapIdle(20000);
-        showToast('Menyusun PDF…');
+        stagePdfProgress(16, 'Merender basemap HD…');
+        creepPdfProgress(68, 45000);
         // Sembunyikan layer rute GL (warna mode — biru untuk lari). Kalau tidak,
         // garis 5px itu ikut tertangkap di frame dan tampak seperti border biru
         // mengelilingi garis oranye hasil overlay 2D pada PDF.
@@ -359,11 +384,15 @@ registerActions({
           waypoints: state.rawPoints,
           elevations: state.elevations,
           speedKph: MODE_PACE[state.mode],
+          onProgress: (pct, label) => stagePdfProgress(pct, label),
         });
+        stagePdfProgress(100, 'Mengunduh…');
       } catch (err) {
         console.warn('[pdf] Export gagal', err);
         alert('Gagal membuat PDF: ' + (err && err.message ? err.message : err));
       } finally {
+        stopPdfProgressCreep();
+        appSet({ pdfProgress: null });
         if (routeHidden && map.getLayer('route-line')) {
           map.setLayoutProperty('route-line', 'visibility', 'visible');
           routeHidden = false;
@@ -381,7 +410,6 @@ registerActions({
 
 // ---- Import GPX ----
 const gpxInput = document.getElementById('gpx-file-input');
-let pendingGpxPts = null;
 
 // Fit bounds ke seluruh titik dengan padding nyaman
 function fitToRoute(points) {
@@ -416,7 +444,7 @@ async function finishGpxImport(gpxPts, gpxMode) {
   redrawMarkers();
 
   // ---- Bentuk rute sesuai pilihan user ----
-  showToast(gpxMode === 'asis' ? 'Memakai jalur GPX apa adanya…' : 'Menyusun ulang rute…');
+  showToast('Memakai jalur GPX apa adanya…');
   try {
     if (gpxMode === 'asis') {
       // Tanpa routing server: geometri track asli dipertahankan utuh.
@@ -460,9 +488,8 @@ gpxInput.addEventListener('change', async () => {
       alert('GPX berisi kurang dari 2 titik.');
       return;
     }
-    pendingGpxPts = pts;
-    // Buka dialog pilihan profil (dirender React/MUI MapOverlays)
-    appSet({ gpxDialog: { fileName: file.name, pointCount: pts.length } });
+    // Selalu pakai jalur GPX apa adanya — tanpa dialog pilihan profil.
+    await finishGpxImport(pts, 'asis');
   } catch (err) {
     hideToast();
     alert('Gagal mengimpor GPX: ' + (err && err.message ? err.message : err));

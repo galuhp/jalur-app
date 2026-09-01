@@ -31,8 +31,8 @@ const initialState = {
   // toast/snackbar
   toast: null, // { text }
 
-  // dialog impor GPX
-  gpxDialog: null, // { fileName, pointCount }
+  // progress export PDF
+  pdfProgress: null, // { percent, label }
 };
 
 let state = initialState;

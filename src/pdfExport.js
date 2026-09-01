@@ -347,7 +347,7 @@ function drawAttributionChip(page, font, mapRectY, mapH) {
   page.drawRectangle({ x, y, width: tw + 8, height: 10, color: C.darkChip, opacity: 0.55 });
   page.drawText(text, { x: x + 4, y: y + 2.8, size: 5.5, font, color: rgb(1, 1, 1) });
 }
-export async function buildPdfBytes({ map, mode, color, routeCoords, waypoints, elevations, speedKph, transformRequest }) {
+export async function buildPdfBytes({ map, mode, color, routeCoords, waypoints, elevations, speedKph, transformRequest, onProgress }) {
   // ---- Vertikal grid (dari atas): header → peta → statistik → footer
   const TOP = PH - M;
   const HEADER_H = 33; // title+accent+hairline zone di bawah TOP
@@ -365,12 +365,15 @@ export async function buildPdfBytes({ map, mode, color, routeCoords, waypoints, 
   // Tangkap frame map: center-crop agar mengisi area peta (rasio IW:mapH)
   // tanpa distorsi, lalu gambar ulang rute & waypoint di atasnya.
   const { dataUrl, bounds } = await captureComposedMap(map, routeCoords, waypoints, IW, mapH, { transformRequest });
+  if (onProgress) onProgress(70, 'Menggambar rute & overlay…');
 
   // ---- Dokumen & font ----
   const doc = await PDFDocument.create();
   const font = await doc.embedFont(StandardFonts.Helvetica);
   const fontB = await doc.embedFont(StandardFonts.HelveticaBold);
+  if (onProgress) onProgress(85, 'Menyusun halaman PDF…');
   const jpg = await doc.embedJpg(dataUrl);
+  if (onProgress) onProgress(92, 'Menyimpan GeoPDF…');
   const acc = hexToRgb(color);
   const accent = rgb(acc.r, acc.g, acc.b);
 
@@ -465,6 +468,7 @@ export async function buildPdfBytes({ map, mode, color, routeCoords, waypoints, 
   doc.setSubject('Rute perencanaan dengan peta georeferensi');
   doc.setProducer('jalur-app (MapLibre + pdf-lib)');
   doc.setKeywords(['GeoPDF', 'geotagged', modeName.toLowerCase(), 'OpenStreetMap']);
+  if (onProgress) onProgress(96, 'Menyimpan GeoPDF…');
   return doc.save();
 }
 

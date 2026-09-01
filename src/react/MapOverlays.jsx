@@ -6,20 +6,12 @@ import {
   Fab,
   Tooltip,
   Snackbar,
-  Alert,
   Dialog,
-  DialogTitle,
   DialogContent,
-  List,
-  ListItemButton,
-  ListItemIcon,
-  ListItemText,
+  LinearProgress,
+  Typography,
 } from '@mui/material';
 import FlagOutlinedIcon from '@mui/icons-material/FlagOutlined';
-import RouteRoundedIcon from '@mui/icons-material/RouteRounded';
-import DirectionsCarRoundedIcon from '@mui/icons-material/DirectionsCarRounded';
-import DirectionsWalkRoundedIcon from '@mui/icons-material/DirectionsWalkRounded';
-import DirectionsBikeRoundedIcon from '@mui/icons-material/DirectionsBikeRounded';
 import ToggleButtonGroup from '@mui/material/ToggleButtonGroup';
 import ToggleButton from '@mui/material/ToggleButton';
 import { getAppState, subscribeApp, actions } from '../store.js';
@@ -30,32 +22,6 @@ const BASEMAPS = [
   { value: 'thunderforest', label: 'Landscape' },
 ];
 
-const GPX_OPTIONS = [
-  {
-    mode: 'asis',
-    icon: <RouteRoundedIcon />,
-    title: 'Pakai jalur GPX apa adanya',
-    sub: 'Geometri asli dipertahankan — tanpa snap ke jalan',
-  },
-  {
-    mode: 'drive',
-    icon: <DirectionsCarRoundedIcon />,
-    title: 'Snap ulang ke jalan (mobil)',
-    sub: 'Fast Routing, profil driving',
-  },
-  {
-    mode: 'foot',
-    icon: <DirectionsWalkRoundedIcon />,
-    title: 'Snap ulang ke jalan (pejalan kaki)',
-    sub: 'OSRM foot — cocok untuk hiking',
-  },
-  {
-    mode: 'bike',
-    icon: <DirectionsBikeRoundedIcon />,
-    title: 'Snap ulang ke jalan (sepeda)',
-    sub: 'OSRM bike',
-  },
-];
 export default function MapOverlays() {
   const s = useSyncExternalStore(subscribeApp, getAppState);
 
@@ -113,33 +79,36 @@ export default function MapOverlays() {
         message={(s.toast && s.toast.text) || ''}
       />
 
-      {/* Dialog impor GPX */}
+      {/* Progress export PDF */}
       <Dialog
-        open={!!s.gpxDialog}
-        onClose={() => actions.cancelGpxImport()}
+        open={!!s.pdfProgress}
         maxWidth="xs"
         fullWidth
+        disableEscapeKeyDown
         PaperProps={{ sx: { borderRadius: '14px' } }}
       >
-        <DialogTitle sx={{ fontFamily: "'Fraunces', serif", fontWeight: 600 }}>Impor GPX</DialogTitle>
-        <DialogContent sx={{ pt: 0 }}>
-          {s.gpxDialog && (
-            <Alert severity="info" variant="outlined" sx={{ mb: 1.5, fontSize: 12 }}>
-              {s.gpxDialog.fileName} — {s.gpxDialog.pointCount.toLocaleString('id-ID')} titik terbaca
-            </Alert>
-          )}
-          <List disablePadding>
-            {GPX_OPTIONS.map((o) => (
-              <ListItemButton
-                key={o.mode}
-                onClick={() => actions.applyGpxProfile(o.mode)}
-                sx={{ borderRadius: '10px', mb: '7px', border: '1px solid', borderColor: 'divider' }}
-              >
-                <ListItemIcon sx={{ minWidth: 40, color: '#2f4a3a' }}>{o.icon}</ListItemIcon>
-                <ListItemText primary={<b style={{ fontSize: 13 }}>{o.title}</b>} secondary={o.sub} />
-              </ListItemButton>
-            ))}
-          </List>
+        <DialogContent sx={{ pt: 3, pb: 2.5 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', mb: 1 }}>
+            <Typography sx={{ fontFamily: "'Fraunces', serif", fontWeight: 600, fontSize: 15 }}>
+              Export PDF
+            </Typography>
+            <Typography sx={{ fontSize: 13, fontWeight: 700, color: '#2f4a3a' }}>
+              {s.pdfProgress ? `${s.pdfProgress.percent}%` : ''}
+            </Typography>
+          </Box>
+          <LinearProgress
+            variant="determinate"
+            value={s.pdfProgress ? s.pdfProgress.percent : 0}
+            sx={{
+              height: 8,
+              borderRadius: 5,
+              backgroundColor: '#e7e9e2',
+              '& .MuiLinearProgress-bar': { borderRadius: 5, backgroundColor: s.elevColor || '#3b7dd8' },
+            }}
+          />
+          <Typography sx={{ mt: 1.2, fontSize: 12, color: 'text.secondary' }}>
+            {(s.pdfProgress && s.pdfProgress.label) || ''}
+          </Typography>
         </DialogContent>
       </Dialog>
     </>
