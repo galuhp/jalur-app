@@ -1,0 +1,41 @@
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500&display=swap');
+@import 'maplibre-gl/dist/maplibre-gl.css';
+
+:root{
+  --ink:#1c2a22; --paper:#f3efe4; --contour:#c9c0a8;
+  --forest:#2f4a3a; --forest-dark:#1e3327;
+  --run:#3b7dd8; --bike:#d9622b; --hike:#3b8f5c;
+  --panel:#fbf9f2; --line: rgba(28,42,34,0.12);
+}
+*{box-sizing:border-box;}
+html,body,#app{margin:0;height:100%;width:100%;}
+body{font-family:'Inter',system-ui,sans-serif;color:var(--ink);background:var(--paper);overflow:hidden;}
+#app{display:flex;height:100vh;width:100vw;}
+
+/* Sidebar shell saja - isi dirender React/MUI */
+#sidebar{width:340px;min-width:340px;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;z-index:5;overflow-y:auto;}
+#sidebar-root{flex:1;display:flex;flex-direction:column;}
+#sidebar-root > div{flex:1;display:flex;flex-direction:column;}
+
+#map-wrap{flex:1;position:relative;background:#dfe6db;min-width:0;}
+#map{position:absolute;inset:0;}
+
+/* Overlay React di atas peta: container transparan klik, item di dalamnya aktif */
+#map-ui-root{position:absolute;inset:0;pointer-events:none;z-index:6;}
+#map-ui-root .map-ui-item{pointer-events:auto;}
+#map-ui-root .MuiPaper-root{background:var(--panel);}
+#map-ui-root .MuiToggleButtonGroup-root .MuiToggleButton-root{color:#6b7a70;border:none;font-weight:600;}
+#map-ui-root .MuiToggleButtonGroup-root .MuiToggleButton-root:not(.Mui-selected){background:#fff;}
+#map-ui-root .MuiToggleButtonGroup-root .MuiToggleButton-root.Mui-selected{background:var(--forest-dark);color:#fff;}
+
+/* Marker titik waypoint (digambar MapLibre) */
+.waypoint-num{background:var(--forest-dark);color:#fff;border-radius:50%;width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;font-family:'JetBrains Mono',monospace;box-shadow:0 0 0 2px #fff;cursor:grab;}
+
+::-webkit-scrollbar{width:6px;}
+::-webkit-scrollbar-thumb{background:var(--contour);border-radius:3px;}
+
+@media (max-width: 760px){
+  #app{flex-direction:column-reverse;}
+  #sidebar{width:100%;min-width:0;max-height:48vh;border-right:none;border-top:1px solid var(--line);}
+  #map-wrap{flex:1;}
+}

@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jalur — Gambar Rute Lari, Sepeda &amp; Hiking</title>
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <!-- Sidebar dirender oleh React/MUI -->
+      <div id="sidebar-root"></div>
+    </aside>
+
+    <div id="map-wrap">
+      <div id="map"></div>
+      <!-- Overlay peta (basemap toggle, fab kembali, snackbar, dialog) dirender React/MUI -->
+      <div id="map-ui-root"></div>
+    </div>
+  </div>
+
+  <input type="file" id="gpx-file-input" accept=".gpx,application/gpx+xml,text/xml" style="display:none" />
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
