@@ -7,7 +7,11 @@ import {
   Tooltip,
   Snackbar,
   Dialog,
+  DialogTitle,
   DialogContent,
+  DialogActions,
+  TextField,
+  Button,
   LinearProgress,
   Typography,
 } from '@mui/material';
@@ -111,6 +115,53 @@ export default function MapOverlays() {
           </Typography>
         </DialogContent>
       </Dialog>
+
+      {/* Dialog nama file PDF */}
+      {s.pdfNameDialog && (
+        <Dialog
+          open
+          onClose={() => actions.cancelPdfName()}
+          maxWidth="xs"
+          fullWidth
+          PaperProps={{ sx: { borderRadius: '14px' } }}
+        >
+          <DialogTitle sx={{ fontFamily: "'Fraunces', serif", fontWeight: 600, pb: 1 }}>
+            Nama file PDF
+          </DialogTitle>
+          <DialogContent sx={{ pt: 0 }}>
+            <Typography sx={{ fontSize: 12, color: 'text.secondary', mb: 1.5 }}>
+              Ekstensi .pdf ditambahkan otomatis.
+            </Typography>
+            <TextField
+              autoFocus
+              fullWidth
+              size="small"
+              label="Nama file"
+              value={s.pdfNameDialog.value}
+              onChange={(e) => actions.setPdfName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.preventDefault();
+                  actions.confirmPdfName();
+                }
+              }}
+            />
+          </DialogContent>
+          <DialogActions sx={{ px: 2, pb: 2 }}>
+            <Button onClick={() => actions.cancelPdfName()} sx={{ color: '#6b7a70', textTransform: 'none' }}>
+              Batal
+            </Button>
+            <Button
+              variant="contained"
+              disableElevation
+              onClick={() => actions.confirmPdfName()}
+              sx={{ bgcolor: '#1e3327', textTransform: 'none', ':hover': { bgcolor: '#2f4a3a' } }}
+            >
+              Buat PDF
+            </Button>
+          </DialogActions>
+        </Dialog>
+      )}
     </>
   );
 }

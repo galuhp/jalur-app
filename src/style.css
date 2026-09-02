@@ -34,6 +34,19 @@ body{font-family:'Inter',system-ui,sans-serif;color:var(--ink);background:var(--
 ::-webkit-scrollbar{width:6px;}
 ::-webkit-scrollbar-thumb{background:var(--contour);border-radius:3px;}
 
+/* ==== Tab app mode (Import GPX / Draw Route) — atas sidebar ==== */
+#sidebar-root .app-mode-group .MuiToggleButton-root{
+  flex-direction:row;gap:8px;padding:10px 8px;font-size:12.5px;font-weight:600;
+  color:#6b7a70;background:#fff;border:1px solid var(--line);border-radius:10px;
+}
+#sidebar-root .app-mode-group .MuiToggleButton-root.Mui-selected{
+  background:var(--forest-dark);border-color:var(--forest-dark);color:#fff;
+}
+#sidebar-root .app-mode-group .MuiToggleButton-root:not(.Mui-selected):hover{background:#fffdf6;}
+
+/* ==== Tombol upload GPX (app mode Import GPX) ==== */
+#sidebar-root .gpx-upload-btn{justify-content:flex-start;background:#fff;}
+
 @media (max-width: 760px){
   #app{flex-direction:column-reverse;}
   #sidebar{width:100%;min-width:0;max-height:48vh;border-right:none;border-top:1px solid var(--line);}

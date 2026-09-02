@@ -27,6 +27,12 @@ const MODE_OPTIONS = [
   { value: 'hike', label: 'Hiking', icon: <HikingRoundedIcon sx={{ fontSize: 19 }} />, color: '#3b8f5c' },
 ];
 
+// Tab app mode — ditampilkan di bawah header "Jalur"
+const APP_MODE_OPTIONS = [
+  { value: 'import', label: 'Import GPX', icon: <UploadFileRoundedIcon sx={{ fontSize: 19 }} /> },
+  { value: 'draw', label: 'Draw Route', icon: <EditOutlinedIcon sx={{ fontSize: 19 }} /> },
+];
+
 function SectionLabel({ children }) {
   return (
     <Typography
@@ -70,67 +76,124 @@ export default function Sidebar() {
           Jalur
         </Typography>
         <Typography sx={{ mt: '8px', fontSize: 12.5, color: '#5b6960', lineHeight: 1.5 }}>
-          Klik di peta untuk menambah titik. Rute, jarak, dan elevasi terhitung otomatis.
+          {s.appMode === 'import'
+            ? 'Unggah file .gpx — rute, jarak, dan elevasi dihitung otomatis dari file.'
+            : 'Klik di peta untuk menambah titik. Rute, jarak, dan elevasi terhitung otomatis.'}
         </Typography>
       </Box>
 
-      {/* Mode */}
-      <ToggleButtonGroup
-        exclusive
-        fullWidth
-        value={s.mode}
-        onChange={(_, v) => v && actions.setMode(v)}
-        sx={{ gap: '6px', p: '16px 22px 0' }}
-      >
-        {MODE_OPTIONS.map((m) => (
-          <ToggleButton
-            key={m.value}
-            value={m.value}
-            sx={{
-              ...(s.mode === m.value ? { bgcolor: m.color } : { bgcolor: '#fff', border: '1px solid', borderColor: 'divider' }),
-              ':hover': s.mode !== m.value ? { bgcolor: '#fffdf6' } : {},
-            }}
-          >
-            {m.icon}
-            {m.label}
-          </ToggleButton>
-        ))}
-      </ToggleButtonGroup>
-
-      {/* Snap to road */}
-      <Box sx={{ px: '22px', pt: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <SectionLabel>Ikuti Jalan</SectionLabel>
-        <Switch checked={s.snapToRoad} onChange={() => actions.toggleSnap()} size="small" />
+      {/* App mode: Import GPX / Draw Route */}
+      <Box sx={{ p: '14px 22px 0' }}>
+        <ToggleButtonGroup
+          exclusive
+          fullWidth
+          className="app-mode-group"
+          value={s.appMode}
+          onChange={(_, v) => v && actions.setAppMode(v)}
+          sx={{ gap: '6px' }}
+        >
+          {APP_MODE_OPTIONS.map((m) => (
+            <ToggleButton key={m.value} value={m.value}>
+              {m.icon}
+              {m.label}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
       </Box>
-      <Typography sx={{ px: '22px', pt: '4px', fontSize: 10.5, color: '#9aa39a', lineHeight: 1.4 }}>
-        {s.snapToRoad
-          ? 'Titik akan otomatis nempel ke jalan/jalur terdekat (OSRM).'
-          : 'Rute mengikuti garis lurus antar titik klik.'}
-      </Typography>
+
+      {/* Panel upload GPX — hanya di app mode Import */}
+      {s.appMode === 'import' && (
+        <Box sx={{ p: '14px 22px 0' }}>
+          <SectionLabel>File GPX</SectionLabel>
+          <Button
+            variant="outlined"
+            fullWidth
+            className="gpx-upload-btn"
+            startIcon={<UploadFileRoundedIcon />}
+            onClick={() => actions.requestGpxImport()}
+          >
+            Pilih File GPX
+          </Button>
+          <Typography sx={{ pt: '6px', fontSize: 10.5, color: '#9aa39a', lineHeight: 1.4 }}>
+            {s.gpxFileName ? `Terakhir diimpor: ${s.gpxFileName}` : 'Belum ada file .gpx diimpor.'}
+          </Typography>
+        </Box>
+      )}
+
+      {/* Pilihan mode rute + snap — hanya relevan di app mode Draw */}
+      {s.appMode === 'draw' && (
+        <>
+          <ToggleButtonGroup
+            exclusive
+            fullWidth
+            value={s.mode}
+            onChange={(_, v) => v && actions.setMode(v)}
+            sx={{ gap: '6px', p: '16px 22px 0' }}
+          >
+            {MODE_OPTIONS.map((m) => (
+              <ToggleButton
+                key={m.value}
+                value={m.value}
+                sx={{
+                  ...(s.mode === m.value ? { bgcolor: m.color } : { bgcolor: '#fff', border: '1px solid', borderColor: 'divider' }),
+                  ':hover': s.mode !== m.value ? { bgcolor: '#fffdf6' } : {},
+                }}
+              >
+                {m.icon}
+                {m.label}
+              </ToggleButton>
+            ))}
+          </ToggleButtonGroup>
+
+          {/* Snap to road */}
+          <Box sx={{ px: '22px', pt: '14px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <SectionLabel>Ikuti Jalan</SectionLabel>
+            <Switch checked={s.snapToRoad} onChange={() => actions.toggleSnap()} size="small" />
+          </Box>
+          <Typography sx={{ px: '22px', pt: '4px', fontSize: 10.5, color: '#9aa39a', lineHeight: 1.4 }}>
+            {s.snapToRoad
+              ? 'Titik akan otomatis nempel ke jalan/jalur terdekat (OSRM).'
+              : 'Rute mengikuti garis lurus antar titik klik.'}
+          </Typography>
+        </>
+      )}
 
       {/* Hint */}
       <Paper elevation={0} sx={{ m: '14px 22px 0', p: '10px 12px', bgcolor: '#fff8ea', border: '1px solid #e8dcb8', borderRadius: '8px', fontSize: 11.5, color: '#7a6a3a', lineHeight: 1.5 }}>
-        💡 Klik peta untuk tiap titik rute. Klik <b>Selesai</b> untuk mengunci, atau geser titik untuk menyesuaikan.
+        {s.appMode === 'import' ? (
+          <>📄 Format .gpx (trkpt/rtept/wpt). Elevasi dari tag &lt;ele&gt; bila ada; jika tidak, diambil dari Open-Meteo.</>
+        ) : (
+          <>💡 Klik peta untuk tiap titik rute. Klik <b>Selesai</b> untuk mengunci, atau geser titik untuk menyesuaikan.</>
+        )}
       </Paper>
 
       {/* Stats */}
       <Box sx={{ p: '16px 22px', borderBottom: '1px solid', borderColor: 'divider', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
         <StatCard label="Jarak" value={s.distanceKm} unit="km" />
-        <StatCard label="Titik" value={s.pointsCount} unit="klik" />
+        <StatCard label="Titik" value={s.pointsCount} unit={s.appMode === 'import' ? null : 'klik'} />
         <StatCard label="Elevasi Naik" value={s.gain != null ? s.gain : '–'} unit="m" />
         <StatCard label="Elevasi Turun" value={s.loss != null ? s.loss : '–'} unit="m" />
       </Box>
 
-      {/* Estimasi waktu */}
-      <Box sx={{ p: '14px 22px', borderBottom: '1px solid', borderColor: 'divider' }}>
-        <SectionLabel>Estimasi Waktu Tempuh</SectionLabel>
-        <Typography sx={{ fontFamily: "'Fraunces', serif", fontSize: 19, color: '#1e3327', fontWeight: 600 }}>
-          {s.estimate}{' '}
-          <Box component="span" sx={{ fontSize: 11, fontFamily: "'Inter', sans-serif", color: '#8a9188', fontWeight: 500 }}>
-            {s.estimateCaption}
-          </Box>
-        </Typography>
-      </Box>
+      {/* Estimasi waktu — hanya di mode Draw (pace mode tidak relevan untuk GPX impor) */}
+      {s.appMode === 'draw' && (
+        <Box sx={{ p: '14px 22px', borderBottom: '1px solid', borderColor: 'divider' }}>
+          <SectionLabel>Estimasi Waktu Tempuh</SectionLabel>
+          <Typography
+            sx={{ fontFamily: "'Fraunces', serif", fontSize: 19, color: '#1e3327', fontWeight: 600 }}
+            title={
+              s.mode === 'hike'
+                ? 'Naismith: 1 jam per 5 km + 30 menit per 300 m naik; koreksi Langmuir untuk turunan (−10m/300m landai 5°–12°, +10m/300m curam >12°)'
+                : undefined
+            }
+          >
+            {s.estimate}{' '}
+            <Box component="span" sx={{ fontSize: 11, fontFamily: "'Inter', sans-serif", color: '#8a9188', fontWeight: 500 }}>
+              {s.estimateCaption}
+            </Box>
+          </Typography>
+        </Box>
+      )}
 
       {/* Profil elevasi */}
       <Box sx={{ p: '16px 22px', borderBottom: '1px solid', borderColor: 'divider' }}>
@@ -156,32 +219,53 @@ export default function Sidebar() {
         )}
       </Box>
 
-      {/* Actions */}
-      <Box sx={{ mt: 'auto', p: '16px 22px', borderTop: '1px solid', borderColor: 'divider', display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
-        <Button variant="outlined" startIcon={<UploadFileRoundedIcon />} onClick={() => actions.requestGpxImport()}>
-          Impor
-        </Button>
-        <Button variant="outlined" startIcon={<DownloadRoundedIcon />} onClick={() => actions.exportGpx()}>
-          GPX
-        </Button>
-        <Button variant="outlined" startIcon={<PictureAsPdfRoundedIcon />} onClick={() => actions.exportPdf()}>
-          PDF
-        </Button>
-        <Button variant="outlined" startIcon={<UndoRoundedIcon />} onClick={() => actions.undoRoute()}>
-          Undo
-        </Button>
-        <Button variant="outlined" startIcon={<DeleteOutlineRoundedIcon />} onClick={() => actions.clearRoute()}>
-          Hapus
-        </Button>
-        <Button
-          variant="contained"
-          onClick={() => actions.toggleFinish()}
-          startIcon={s.locked ? <EditOutlinedIcon /> : <CheckCircleOutlineRoundedIcon />}
-          sx={{ gridColumn: '1 / -1' }}
+      {/* Actions — mode Draw: selalu tampil (perilaku lama, tidak bergantung
+          jumlah titik); tombol Impor dihapus karena redundan dengan tab
+          "Import GPX". Mode Import: baru tampil setelah rute GPX berhasil
+          diimpor (s.hasPoints), hanya PDF & Hapus. Conditional render =
+          elemen dihapus penuh dari DOM (setara display:none), tidak
+          menyisakan ruang kosong. Grid 2 kolom: GPX+PDF / Undo+Hapus,
+          Selesai full-width. */}
+      {(s.appMode === 'draw' || s.hasPoints) && (
+        <Box
+          sx={{
+            mt: 'auto',
+            p: '16px 22px',
+            borderTop: '1px solid',
+            borderColor: 'divider',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(2, 1fr)',
+            gap: '8px',
+          }}
         >
-          {s.locked ? 'Edit lagi' : 'Selesai'}
-        </Button>
-      </Box>
+          {s.appMode === 'draw' && (
+            <Button variant="outlined" startIcon={<DownloadRoundedIcon />} onClick={() => actions.exportGpx()}>
+              GPX
+            </Button>
+          )}
+          <Button variant="outlined" startIcon={<PictureAsPdfRoundedIcon />} onClick={() => actions.exportPdf()}>
+            PDF
+          </Button>
+          {s.appMode === 'draw' && (
+            <Button variant="outlined" startIcon={<UndoRoundedIcon />} onClick={() => actions.undoRoute()}>
+              Undo
+            </Button>
+          )}
+          <Button variant="outlined" startIcon={<DeleteOutlineRoundedIcon />} onClick={() => actions.clearRoute()}>
+            Hapus
+          </Button>
+          {s.appMode === 'draw' && (
+            <Button
+              variant="contained"
+              onClick={() => actions.toggleFinish()}
+              startIcon={s.locked ? <EditOutlinedIcon /> : <CheckCircleOutlineRoundedIcon />}
+              sx={{ gridColumn: '1 / -1' }}
+            >
+              {s.locked ? 'Edit lagi' : 'Selesai'}
+            </Button>
+          )}
+        </Box>
+      )}
     </Box>
   );
 }

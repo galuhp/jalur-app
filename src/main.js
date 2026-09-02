@@ -4,7 +4,7 @@ import './uiRoot.jsx';
 import { STYLES, BASEMAP_CONFIG } from './basemaps.js';
 import { appSet, registerActions, getAppState } from './store.js';
 import { fetchOSRMRoute, fetchElevation, fetchStraightRoute } from './routing.js';
-import { downloadGpx } from './gpx.js';
+import { downloadGpx, parseGPX, gpxElevations } from './gpx.js';
 import { downloadGeotaggedPdf } from './pdfExport.js';
 import { parseGpxText, readGpxFile } from './gpxImport.js';
 import { samplePoints } from './geo.js';
@@ -14,17 +14,20 @@ import {
   updateStats,
   updateElevationStats,
   drawElevationChart,
+  estimateHike,
   showToast,
   hideToast,
 } from './ui.js';
 
 // ---- App state ----
 const state = {
+  appMode: 'draw', // 'import' = upload GPX | 'draw' = klik peta (default)
   mode: 'run',
   snapToRoad: true,
   rawPoints: [], // clicked waypoints [{lng,lat}]
   routeCoords: [], // rendered route (snapped or raw) [{lng,lat}]
   elevations: null,
+  gpxFileName: null, // nama file GPX terakhir yang diimpor (default nama PDF)
   locked: false,
 };
 
@@ -228,10 +231,14 @@ async function computeRoute() {
   hideToast();
   updateElevationStats(state.elevations);
   drawElevationChart(state.elevations, state.mode);
+  // Estimasi ulang begitu elevasi siap (hike → Naismith + Langmuir)
+  appSet(estimateHike(state));
 }
 
 // ---- Event wiring ----
 map.on('click', (e) => {
+  // Klik-untuk-tambah-titik hanya aktif di app mode Draw Route.
+  if (state.appMode !== 'draw') return;
   if (state.locked) return;
   state.rawPoints.push({ lng: e.lngLat.lng, lat: e.lngLat.lat });
   computeRoute();
@@ -274,8 +281,45 @@ function stopPdfProgressCreep() {
   }
 }
 
+// Stamp tanggal lokal YYYY-MM-DD untuk nama file default
+function todayStamp() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+// Bersihkan input user menjadi nama file yang aman (Windows-safe)
+function sanitizePdfName(raw) {
+  const cleaned = String(raw)
+    .replace(/[\\/:*?"<>|]+/g, '-') // karakter ilegal nama file Windows
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/[. ]+$/, '') // titik/spasi di akhir dilarang Windows
+    .slice(0, 80)
+    .trim();
+  return cleaned || `jalur-rute-${todayStamp()}`;
+}
+
 // ---- Aksi UI: di-registrasi ke store, dipanggil komponen React/MUI ----
 registerActions({
+  // Ganti app mode (Import GPX ↔ Draw Route). Pilihan mode rute
+  // (lari/sepeda/hiking) dan snap TIDAK direset — hanya state rute
+  // yang dibersihkan supaya hasil import & gambar manual tidak tercampur.
+  setAppMode(m) {
+    if (m === state.appMode || (m !== 'import' && m !== 'draw')) return;
+    state.appMode = m;
+    state.rawPoints = [];
+    state.routeCoords = [];
+    state.elevations = null;
+    state.gpxFileName = null;
+    state.locked = false;
+    appSet({ appMode: m, locked: false, gpxFileName: null, hasPoints: false });
+    redrawMarkers();
+    redrawLine();
+    updateStats(state);
+    updateElevationStats(null);
+    drawElevationChart(null, state.mode);
+  },
+
   setMode(m) {
     state.mode = m;
     appSet({ mode: m });
@@ -296,11 +340,16 @@ registerActions({
     state.rawPoints = [];
     state.routeCoords = [];
     state.elevations = null;
+    state.gpxFileName = null;
     state.locked = false;
-    appSet({ locked: false });
+    // hasPoints: false → di mode Import footer aksi langsung tersembunyi
+    // kembali setelah Hapus (redrawMarkers di bawah juga men-set nilainya
+    // dari rawPoints yang sudah kosong).
+    appSet({ locked: false, gpxFileName: null, hasPoints: false });
     redrawMarkers();
     redrawLine();
     updateStats(state);
+    updateElevationStats(null);
     drawElevationChart(null, state.mode);
   },
 
@@ -315,8 +364,8 @@ registerActions({
   },
 
   backToStart() {
-    if (!state.rawPoints.length) return;
-    const p0 = state.rawPoints[0];
+    const p0 = state.rawPoints[0] || state.routeCoords[0]; // fallback: rute hasil import GPX
+    if (!p0) return;
     map.flyTo({ center: [p0.lng, p0.lat], zoom: Math.max(map.getZoom(), 14), speed: 1.2 });
   },
 
@@ -336,77 +385,106 @@ registerActions({
   },
 
   exportGpx() {
-    if (state.rawPoints.length < 2) {
-      alert('Tambahkan minimal 2 titik dulu sebelum export GPX.');
+    // Guard memakai rute yang tampil (juga berlaku untuk hasil import GPX,
+    // yang tidak menyimpan rawPoints/waypoint klik).
+    const coords = state.routeCoords.length > 1 ? state.routeCoords : state.rawPoints;
+    if (coords.length < 2) {
+      alert('Impor GPX atau gambar minimal 2 titik dulu sebelum export GPX.');
       return;
     }
-    const coords = state.routeCoords.length > 1 ? state.routeCoords : state.rawPoints;
     downloadGpx(coords, state.elevations, state.mode);
   },
 
   exportPdf() {
-    (async () => {
-      if (state.rawPoints.length < 2) {
-        alert('Tambahkan minimal 2 titik dulu sebelum export PDF.');
-        return;
-      }
-      const prevKey = currentBasemap;
-      let switched = false;
-      let routeHidden = false;
-      setPdfProgress(4, 'Menyiapkan basemap OSM…');
-      try {
-        if (prevKey !== 'osm') {
-          switched = true;
-          currentBasemap = 'osm';
-          appSet({ basemap: 'osm' });
-          map.setStyle(STYLES.osm);
-        }
-        // Selalu tunggu tile benar-benar selesai (juga saat basemap sudah
-        // OSM) — kalau tidak, tangkapan bisa dapat peta yang masih kosong.
-        creepPdfProgress(15, 20000);
-        await waitForMapIdle(20000);
-        stagePdfProgress(16, 'Merender basemap HD…');
-        creepPdfProgress(68, 45000);
-        // Sembunyikan layer rute GL (warna mode — biru untuk lari). Kalau tidak,
-        // garis 5px itu ikut tertangkap di frame dan tampak seperti border biru
-        // mengelilingi garis oranye hasil overlay 2D pada PDF.
-        if (map.getLayer('route-line')) {
-          map.setLayoutProperty('route-line', 'visibility', 'none');
-          routeHidden = true;
-        }
-        const coords = state.routeCoords.length > 1 ? state.routeCoords : state.rawPoints;
-        await downloadGeotaggedPdf({
-          map,
-          mode: state.mode,
-          color: modeColor(state.mode),
-          transformRequest: rapidApiTransformRequest,
-          routeCoords: coords,
-          waypoints: state.rawPoints,
-          elevations: state.elevations,
-          speedKph: MODE_PACE[state.mode],
-          onProgress: (pct, label) => stagePdfProgress(pct, label),
-        });
-        stagePdfProgress(100, 'Mengunduh…');
-      } catch (err) {
-        console.warn('[pdf] Export gagal', err);
-        alert('Gagal membuat PDF: ' + (err && err.message ? err.message : err));
-      } finally {
-        stopPdfProgressCreep();
-        appSet({ pdfProgress: null });
-        if (routeHidden && map.getLayer('route-line')) {
-          map.setLayoutProperty('route-line', 'visibility', 'visible');
-          routeHidden = false;
-        }
-        if (switched) {
-          currentBasemap = prevKey || 'maplibre';
-          appSet({ basemap: currentBasemap });
-          map.setStyle(STYLES[currentBasemap]);
-        }
-        hideToast();
-      }
-    })();
+    if (state.routeCoords.length < 2 && state.rawPoints.length < 2) {
+      alert('Impor GPX atau gambar minimal 2 titik dulu sebelum export PDF.');
+      return;
+    }
+    // Default nama file: nama GPX yang diimpor (tanpa ekstensi .gpx),
+    // atau jalur-rute-<tanggal> untuk rute yang digambar manual.
+    const base = state.gpxFileName
+      ? state.gpxFileName.replace(/\.gpx$/i, '')
+      : `jalur-rute-${todayStamp()}`;
+    appSet({ pdfNameDialog: { value: base, defaultName: base } });
+  },
+
+  setPdfName(value) {
+    const d = getAppState().pdfNameDialog;
+    if (d) appSet({ pdfNameDialog: { ...d, value } });
+  },
+
+  cancelPdfName() {
+    appSet({ pdfNameDialog: null });
+  },
+
+  confirmPdfName() {
+    const d = getAppState().pdfNameDialog;
+    if (!d) return;
+    appSet({ pdfNameDialog: null });
+    runPdfExport((d.value || '').trim() || d.defaultName);
   },
 });
+
+// Export PDF sebenarnya — dijalankan setelah nama file dikonfirmasi di dialog.
+async function runPdfExport(rawName) {
+  const base = sanitizePdfName(rawName);
+  const fileName = /\.pdf$/i.test(base) ? base : `${base}.pdf`;
+  const prevKey = currentBasemap;
+  let switched = false;
+  let routeHidden = false;
+  setPdfProgress(4, 'Menyiapkan basemap OSM…');
+  try {
+    if (prevKey !== 'osm') {
+      switched = true;
+      currentBasemap = 'osm';
+      appSet({ basemap: 'osm' });
+      map.setStyle(STYLES.osm);
+    }
+    // Selalu tunggu tile benar-benar selesai (juga saat basemap sudah
+    // OSM) — kalau tidak, tangkapan bisa dapat peta yang masih kosong.
+    creepPdfProgress(15, 20000);
+    await waitForMapIdle(20000);
+    stagePdfProgress(16, 'Merender basemap HD…');
+    creepPdfProgress(68, 45000);
+    // Sembunyikan layer rute GL (warna mode — biru untuk lari). Kalau tidak,
+    // garis 5px itu ikut tertangkap di frame dan tampak seperti border biru
+    // mengelilingi garis oranye hasil overlay 2D pada PDF.
+    if (map.getLayer('route-line')) {
+      map.setLayoutProperty('route-line', 'visibility', 'none');
+      routeHidden = true;
+    }
+    const coords = state.routeCoords.length > 1 ? state.routeCoords : state.rawPoints;
+    await downloadGeotaggedPdf({
+      map,
+      mode: state.mode,
+      color: modeColor(state.mode),
+      transformRequest: rapidApiTransformRequest,
+      routeCoords: coords,
+      waypoints: state.rawPoints,
+      elevations: state.elevations,
+      speedKph: MODE_PACE[state.mode],
+      fileName,
+      onProgress: (pct, label) => stagePdfProgress(pct, label),
+    });
+    stagePdfProgress(100, 'Mengunduh…');
+  } catch (err) {
+    console.warn('[pdf] Export gagal', err);
+    alert('Gagal membuat PDF: ' + (err && err.message ? err.message : err));
+  } finally {
+    stopPdfProgressCreep();
+    appSet({ pdfProgress: null });
+    if (routeHidden && map.getLayer('route-line')) {
+      map.setLayoutProperty('route-line', 'visibility', 'visible');
+      routeHidden = false;
+    }
+    if (switched) {
+      currentBasemap = prevKey || 'maplibre';
+      appSet({ basemap: currentBasemap });
+      map.setStyle(STYLES[currentBasemap]);
+    }
+    hideToast();
+  }
+}
 
 // ---- Import GPX ----
 const gpxInput = document.getElementById('gpx-file-input');
@@ -473,6 +551,56 @@ async function finishGpxImport(gpxPts, gpxMode) {
   hideToast();
   updateElevationStats(state.elevations);
   drawElevationChart(state.elevations, state.mode);
+  // Estimasi ulang begitu elevasi siap (hike → Naismith + Langmuir)
+  appSet(estimateHike(state));
+}
+
+// ---- Alur import GPX untuk app mode "Import GPX" ----
+// Rute dirender apa adanya dari geometri GPX (tanpa waypoint klik yang bisa
+// diedit). Jarak dihitung dari titik GPX; elevasi dipakai dari tag <ele>
+// bila memadai, selain itu fallback ke Open-Meteo Elevation API.
+async function importGpxAsRoute(gpxText, fileName) {
+  const pts = parseGPX(gpxText); // [{lat, lng, ele}]
+  if (pts.length < 2) {
+    hideToast();
+    alert('GPX berisi kurang dari 2 titik.');
+    return;
+  }
+  showToast('Memakai jalur GPX apa adanya…');
+
+  // Reset state rute — hasil import tidak boleh bercampur sisa mode draw.
+  state.rawPoints = [];
+  state.routeCoords = pts.map((p) => ({ lng: p.lng, lat: p.lat }));
+  state.elevations = null;
+  state.locked = false;
+  state.gpxFileName = fileName; // dipakai sebagai default nama file PDF
+  appSet({ locked: false, gpxFileName: fileName });
+
+  redrawMarkers(); // kosongkan marker waypoint lama
+  redrawLine();
+  updateStats({ ...state, pointsCount: pts.length });
+  fitToRoute(state.routeCoords);
+  appSet({ hasPoints: state.routeCoords.length > 1 });
+  hideToast();
+
+  // Elevasi: dari <ele> GPX bila tersedia, kalau tidak → Open-Meteo.
+  const gpxEle = gpxElevations(pts);
+  if (gpxEle) {
+    state.elevations = gpxEle;
+  } else {
+    showToast('Mengambil data elevasi…');
+    try {
+      state.elevations = await fetchElevation(state.routeCoords);
+    } catch (err) {
+      console.warn('Elevation fetch failed', err);
+      state.elevations = null;
+    }
+    hideToast();
+  }
+  updateElevationStats(state.elevations);
+  drawElevationChart(state.elevations, state.mode);
+  // Estimasi ulang begitu elevasi siap (hike → Naismith + Langmuir)
+  appSet(estimateHike(state));
 }
 
 gpxInput.addEventListener('change', async () => {
@@ -482,14 +610,21 @@ gpxInput.addEventListener('change', async () => {
   try {
     showToast('Membaca GPX…');
     const text = await readGpxFile(file);
-    const pts = parseGpxText(text);
-    if (pts.length < 2) {
-      hideToast();
-      alert('GPX berisi kurang dari 2 titik.');
-      return;
+    if (state.appMode === 'import') {
+      // App mode Import: geometri asli GPX, elevasi dari <ele> bila ada.
+      await importGpxAsRoute(text, file.name);
+    } else {
+      // Alur lama di mode Draw: rute apa adanya + anchor waypoint yang bisa diedit.
+      const pts = parseGpxText(text);
+      if (pts.length < 2) {
+        hideToast();
+        alert('GPX berisi kurang dari 2 titik.');
+        return;
+      }
+      state.gpxFileName = file.name; // dipakai sebagai default nama file PDF
+      // Selalu pakai jalur GPX apa adanya — tanpa dialog pilihan profil.
+      await finishGpxImport(pts, 'asis');
     }
-    // Selalu pakai jalur GPX apa adanya — tanpa dialog pilihan profil.
-    await finishGpxImport(pts, 'asis');
   } catch (err) {
     hideToast();
     alert('Gagal mengimpor GPX: ' + (err && err.message ? err.message : err));

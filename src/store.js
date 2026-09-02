@@ -6,6 +6,8 @@
 
 const initialState = {
   // kontrol peta/route
+  appMode: 'draw', // app mode aktif: 'import' (upload GPX) | 'draw' (klik peta)
+  gpxFileName: null, // nama file GPX terakhir yang diimpor
   mode: 'run',
   snapToRoad: true,
   locked: false,
@@ -33,6 +35,9 @@ const initialState = {
 
   // progress export PDF
   pdfProgress: null, // { percent, label }
+
+  // dialog nama file PDF
+  pdfNameDialog: null, // { value, defaultName }
 };
 
 let state = initialState;

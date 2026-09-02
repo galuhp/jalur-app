@@ -1,4 +1,4 @@
-import { totalDistanceMeters } from './geo.js';
+import { totalDistanceMeters, estimateHikingTime } from './geo.js';
 import { appSet } from './store.js';
 
 export const MODE_COLORS = { run: '#3b7dd8', bike: '#d9622b', hike: '#3b8f5c' };
@@ -12,25 +12,46 @@ function fmtKm(m) {
   return (m / 1000).toFixed(2);
 }
 
-export function updateStats({ routeCoords, rawPoints, mode }) {
+function fmtDuration(totalMin) {
+  const h = Math.floor(totalMin / 60);
+  const m = Math.round(totalMin % 60);
+  return `${h > 0 ? h + 'j ' : ''}${m}m`;
+}
+
+// Estimasi waktu tempuh rute aktif.
+// - Mode hike: Naismith + koreksi Langmuir (lihat geo.js) bila data elevasi
+//   sudah tersedia; selama elevasi belum di-fetch, fallback pace konstan.
+// - Mode run/bike: pace konstan MODE_PACE seperti sebelumnya (tidak berubah).
+export function estimateHike({ mode, routeCoords, rawPoints, elevations }) {
+  const coords = routeCoords.length > 1 ? routeCoords : rawPoints;
+  const distNum = totalDistanceMeters(coords) / 1000;
+  const speed = MODE_PACE[mode] || MODE_PACE.run;
+  if (distNum <= 0) return { estimate: '–', estimateCaption: 'pada pace default' };
+  if (mode === 'hike') {
+    const mins = estimateHikingTime({
+      distanceMeters: distNum * 1000,
+      routeCoords: coords,
+      elevationSamples: elevations,
+    });
+    if (mins != null) {
+      return { estimate: fmtDuration(mins), estimateCaption: 'estimasi Naismith' };
+    }
+  }
+  const totalMin = (distNum / speed) * 60;
+  return { estimate: fmtDuration(totalMin), estimateCaption: `pada ${speed} km/j` };
+}
+
+export function updateStats({ routeCoords, rawPoints, mode, pointsCount, elevations }) {
   const coords = routeCoords.length > 1 ? routeCoords : rawPoints;
   const distKm = fmtKm(totalDistanceMeters(coords));
 
-  const speed = MODE_PACE[mode];
-  let estimate = '–';
-  let estimateCaption = 'pada pace default';
-  const distNum = parseFloat(distKm);
-  if (distNum > 0) {
-    const totalMin = (distNum / speed) * 60;
-    const h = Math.floor(totalMin / 60);
-    const m = Math.round(totalMin % 60);
-    estimate = `${h > 0 ? h + 'j ' : ''}${m}m`;
-    estimateCaption = `pada ${speed} km/j`;
-  }
+  const { estimate, estimateCaption } = estimateHike({ mode, routeCoords, rawPoints, elevations });
 
   appSet({
     distanceKm: distKm,
-    pointsCount: rawPoints.length,
+    // `pointsCount` eksplisit dipakai alur import GPX (jumlah titik GPX),
+    // karena rawPoints sengaja kosong di app mode import.
+    pointsCount: pointsCount != null ? pointsCount : rawPoints.length,
     estimate,
     estimateCaption,
   });
@@ -75,8 +96,8 @@ export function drawElevationChart(elevations, mode) {
 
   appSet({
     elevRange: `${Math.round(min)}–${Math.round(max)} m`,
-    elevPathD,
-    elevAreaD,
+    elevPathD: pathD,
+    elevAreaD: areaD,
     elevColor: modeColor(mode),
   });
 }

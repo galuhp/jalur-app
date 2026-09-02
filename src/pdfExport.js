@@ -480,7 +480,7 @@ export async function downloadGeotaggedPdf(opts) {
   const d = new Date();
   const stamp = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   a.href = url;
-  a.download = `jalur-rute-${stamp}.pdf`;
+  a.download = (opts && opts.fileName) || `jalur-rute-${stamp}.pdf`;
   document.body.appendChild(a);
   a.click();
   a.remove();
